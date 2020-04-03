@@ -31,6 +31,8 @@ const ClosedWindowColor = "green"; // Farbe für Fenster geschlossen
 const HeadlessTable = false; // Tabelle mit oder ohne Kopf darstellen
 const TableDateFormat = "SS:mm:ss TT.MM.JJJJ"; //Zeit- & Datums- formatierung für Tabelle. Übersicht der Kürzel hier: https://github.com/ioBroker/ioBroker.javascript/blob/master/docs/en/javascript.md#formatdate
 
+const JSON_out = true; //JSON statt Tabelle 
+
 //Ab hier nix mehr ändern!
 
 let OpenWindowCount = 0; // Gesamtzahl der geöffneten Fenster
@@ -57,7 +59,9 @@ for (let x in Funktionen) {        // loop ueber alle Functions
         if (typeof Funktion == 'object') Funktion = Funktion.de;
         let members = Funktionen[x].members;
         if (Funktion == WelcheFunktionVerwenden) { //Wenn Function ist Verschluss
+
             for (let y in members) { // Loop über alle Verschluss Members
+
                 Sensor[y] = members[y];
                 let room = getObject(Sensor[y], 'rooms').enumNames[0];
                 if (typeof room == 'object') room = room.de;
@@ -80,7 +84,7 @@ for (let x in Funktionen) {        // loop ueber alle Functions
 };
 
 //Struktur anlegen in js.0 um Sollwert und Summenergebniss zu speichern
-//Generische Datenpunkte vorbereiten 
+//Generische Datenpunkte vorbereiten
 States[DpCount] = { id: praefix + "AlleFensterZu", initial: true, forceCreation: false, common: { read: true, write: true, name: "Fenster zu?", type: "boolean", role: "state", def: true } }; //
 DpCount++;
 States[DpCount] = { id: praefix + "WindowsOpen", initial: 0, forceCreation: false, common: { read: true, write: true, name: "Anzahl der geöffneten Fenster", type: "number", def: 0 } };
@@ -88,6 +92,8 @@ DpCount++;
 States[DpCount] = { id: praefix + "RoomsWithOpenWindows", initial: "Fenster in allen Räumen geschlossen", forceCreation: false, common: { read: true, write: true, name: "In welchen Räumen sind Fenster geöffnet?", type: "string", def: "Fenster in allen Räumen geschlossen" } };
 DpCount++;
 States[DpCount] = { id: praefix + "OverviewTable", initial: "", forceCreation: false, common: { read: true, write: true, name: "Übersicht aller Räume und geöffneten Fenster", type: "string", def: "" } };
+DpCount++;
+States[DpCount] = { id: praefix + "OverviewJSON", initial: "", forceCreation: false, common: { read: true, write: true, name: "Übersicht aller Räume und geöffneten Fenster", type: "string", def: "" } };
 
 //Alle States anlegen, Main aufrufen wenn fertig
 let numStates = States.length;
@@ -110,7 +116,7 @@ function main() {
     };
     CreateTrigger();
     CheckAllWindows(); //Bei Scriptstart alle Fenster einlesen
-    CreateOverviewTable()
+    (JSON_out) ? CreateOverviewJSON() : CreateOverviewTable();
 }
 
 function Meldung(msg) {
@@ -129,7 +135,38 @@ function Meldung(msg) {
     if (logging) log("Msg= " + msg);
 }
 
-function CreateOverviewTable() { //  Erzeugt tabellarische Übersicht als HTML Tabelle    
+function CreateOverviewJSON() { //  Erzeugt JSON
+
+    let OverviewJSON = [];
+
+    for (let x = 0; x < RoomList.length; x++) { //Alle Räume durchgehen
+        if (RoomOpenWindowCount[x] > 0) { // Räume mit offenen Fenstern
+
+            OverviewJSON.push({
+                'WindowOpenImg'         : WindowOpenImg,
+                'RoomOpenWindowCount'   : RoomOpenWindowCount[x],
+                'RoomList'              : RoomList[x],
+                'RoomStateTimeStamp'    : formatDate(getDateObject(getState(praefix + RoomList[x] + ".IsOpen").lc), TableDateFormat)
+            });
+
+        }
+        else { // Geschlossene Räume
+
+            OverviewJSON.push({
+                'WindowOpenImg'         : WindowCloseImg,
+                'RoomOpenWindowCount'   : RoomOpenWindowCount[x],
+                'RoomList'              : RoomList[x],
+                'RoomStateTimeStamp'    : formatDate(getDateObject(getState(praefix + RoomList[x] + ".IsOpen").lc), TableDateFormat)
+            });
+
+        };
+    };
+
+    setState(praefix + "OverviewJSON", JSON.stringify(OverviewJSON));
+
+}
+
+function CreateOverviewTable() { //  Erzeugt tabellarische Übersicht als HTML Tabelle
     //Tabellenüberschrift und Head
     let OverviewTable = "";
     if (!HeadlessTable) {
@@ -261,7 +298,7 @@ function CheckWindow(x) { //Für einzelnes Fenster. Via Trigger angesteuert.
     };
     if (logging) log("Offene Fenster gesamt= " + OpenWindowCount);
     CreateRoomsWithOpenWindowsList();
-    CreateOverviewTable();
+    (JSON_out) ? CreateOverviewJSON() : CreateOverviewTable();
 }
 
 function CheckAllWindows() { //Prüft bei Programmstart alle Fenster
